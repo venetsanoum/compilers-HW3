@@ -2,7 +2,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import syntaxtree.*;
-
+import java.io.FileWriter;
 public class Main {
     public static void main(String[] args) throws Exception {
         for(int i = 0; i < args.length; i++){
@@ -20,6 +20,12 @@ public class Main {
                 System.err.println("Program parsed successfully.");
                 OffsetsCalculator ofc = new OffsetsCalculator(st.symtbl);
                 ofc.calculate();
+
+                String out = args[i].replace(".java", ".ll");
+                FileWriter fw = new FileWriter(out);
+                IRVisitor irv = new IRVisitor(st.symtbl, writer);
+                root.accept(irv, null);
+                fw.close();
             }
             catch(ParseException ex){
                 System.out.println(ex.getMessage());
