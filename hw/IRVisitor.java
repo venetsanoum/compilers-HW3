@@ -2,8 +2,9 @@ import syntaxtree.*;
 import visitor.*;
 import symtbl.*;
 import java.io.FileWriter;
+import java.util.List;
 
-class IRVisitor extends GJDepthFirst <void, String>{
+class IRVisitor extends GJDepthFirst <String, String>{
     String currClass, currMethod;
     MethodInfo currMethInfo;
     ClassInfo currClassInfo;
@@ -28,9 +29,272 @@ class IRVisitor extends GJDepthFirst <void, String>{
     }
     void emit(String s) throws Exception{
         try{
-            fw.write(s);
+            fw.write(s + "\n");
         }catch (Exception e){
             System.err.println(e.getMessage());
         }
+    }
+    String llvmType(String type){
+        if(type.equals("int"))
+            return "i32";
+        else if(type.equals("boolean"))
+            return "i1";
+        else if(type.equals("int[]"))
+            return "i32*";
+        else
+            return "i8*";
+    }
+    public String CheckVariable(String name) throws Exception{
+        // έλεγχος στις τοπικές μεταβλητές
+        LocalVarInfo local = currMethInfo.RetrieveLocalVar(name);
+        if(local != null){
+            return local.GetType();
+        }
+        // έλεγχος στις παραμέτρους τις μεθόδου
+        List<LocalVarInfo> param = currMethInfo.RetrieveParameters();
+        for(LocalVarInfo l : param){
+            if(l.GetName().equals(name)){
+                return l.GetType();
+            }
+        }
+        // έλεγχος στα fields της κλάσης
+        FieldInfo field = currClassInfo.RetrieveField(name);
+        if(field != null){
+            return field.GetType();
+        }
+
+        // έλεγχος σε fields γονεικών κλάσεων
+        String parent;
+        ClassInfo tempClass = currClassInfo;
+        while((parent = tempClass.RetrieveParent()) != null){
+            ClassInfo parentClass = symtbl.RetrieveClass(parent);
+            FieldInfo parentField = parentClass.RetrieveField(name);
+            if(parentField != null){
+                return parentField.GetType();
+            }
+            tempClass = parentClass;
+        }
+        throw new Exception("Curr Class: " + currClass + " Undefined Variable: " + name);
+    }
+    /**
+    * f0 -> "class"
+    * f1 -> Identifier()
+    * f2 -> "{"
+    * f3 -> "public"
+    * f4 -> "static"
+    * f5 -> "void"
+    * f6 -> "main"
+    * f7 -> "("
+    * f8 -> "String"
+    * f9 -> "["
+    * f10 -> "]"
+    * f11 -> Identifier()
+    * f12 -> ")"
+    * f13 -> "{"
+    * f14 -> ( VarDeclaration() )*
+    * f15 -> ( Statement() )*
+    * f16 -> "}"
+    * f17 -> "}"
+    */
+    @Override
+    public String visit(MainClass n, String argu) throws Exception {
+        String classname = n.f1.accept(this, "name");
+        currClass = classname;
+        currClassInfo = symtbl.RetrieveClass(classname);
+        currMethInfo = currClassInfo.RetrieveMethod("main").get(0);
+        currMethod = "main";
+        emit("declare i32 @printf(i8*)");
+        emit("declare i8* @calloc(i32, i32)");
+        emit("declare void @throw_oob()");
+        emit("");
+        String str = "define i32 @main(i32 %argc, i8** %argv) {";
+        for (Node node : n.f14.nodes){
+            str += node.accept(this, null);
+        }
+        for(Node node : n.f15.nodes){
+            str += node.accept(this, null);
+        }
+        emit(str);
+        emit("ret i32 0");
+        emit("}");
+
+        currMethInfo = null;
+        currMethod = null;
+        return null;
+    }
+    /**
+    * f0 -> "class"
+    * f1 -> Identifier()
+    * f2 -> "{"
+    * f3 -> ( VarDeclaration() )*
+    * f4 -> ( MethodDeclaration() )*
+    * f5 -> "}"
+    */
+    @Override
+    public String visit(ClassDeclaration n, String argu) throws Exception {
+        String classname = n.f1.accept(this, "name");
+        currClass = classname;
+        currClassInfo = symtbl.RetrieveClass(classname);
+        
+        n.f4.accept(this, null);
+        return null;
+    }
+    /**
+    * f0 -> "class"
+    * f1 -> Identifier()
+    * f2 -> "extends"
+    * f3 -> Identifier()
+    * f4 -> "{"
+    * f5 -> ( VarDeclaration() )*
+    * f6 -> ( MethodDeclaration() )*
+    * f7 -> "}"
+    */
+    @Override
+    public String visit(ClassExtendsDeclaration n, String argu) throws Exception{
+        String classname = n.f1.accept(this, "name");
+        currClass = classname;
+        currClassInfo = symtbl.RetrieveClass(classname);
+        n.f4.accept(this, null);
+        return null;
+    }
+    /**
+    * f0 -> "public"
+    * f1 -> Type()
+    * f2 -> Identifier()
+    * f3 -> "("
+    * f4 -> ( FormalParameterList() )?
+    * f5 -> ")"
+    * f6 -> "{"
+    * f7 -> ( VarDeclaration() )*
+    * f8 -> ( Statement() )*
+    * f9 -> "return"
+    * f10 -> Expression()
+    * f11 -> ";"
+    * f12 -> "}"
+    */
+    @Override
+    public String visit(MethodDeclaration n, String argu) throws Exception{
+        String type = n.f1.accept(this, null);
+        String llvmtype = llvmType(type);
+        currMethod = n.f2.accept(this, "name");
+        List<MethodInfo>listOfMethods = currClassInfo.RetrieveMethod(currMethod);
+        String params = n.f4.present() ? n.f4.accept(this, null) : "";
+        String paramSign = n.f4.present() ? n.f4.accept(this, "signature") : "";
+        // από όλες τις μεθόδους με το ίδιο όνομα (αν τυχόν έχω overloading)
+        // κρατάω τις πληροφορίες για αυτή με την ίδια υπογραφή με αυτή της τρέχουσας μεθόδου
+        for(MethodInfo m : listOfMethods){
+            String checkparams = m.RetrieveParamSign();
+            if(paramSign.equals(checkparams)){
+                currMethInfo = m;
+                break;
+            }
+        }
+        emit("define " + llvmtype + " @" + currMethod + " (" + params + ") {");
+        n.f4.accept(this, "llvm");
+        for(Node node : n.f7.nodes){
+            n.accept(this, null);
+        }
+        for(Node node : n.f8.nodes){
+            n.accept(this, null);
+        }
+        String reg = n.f10.accept(this, "type");
+
+        emit("ret " + llvmtype + " " + reg);
+        emit("}");
+        currMethod = null;
+        currMethInfo = null;
+        return null;
+    }
+    /**
+    * f0 -> FormalParameter()
+    * f1 -> FormalParameterTail()
+    */
+    @Override
+    public String visit(FormalParameterList n, String argu) throws Exception {
+        String ret = n.f0.accept(this, argu);
+        if (n.f1 != null) {
+            ret += n.f1.accept(this, argu); // φτιάχνεται ένα string με τις παραμέτρους
+        }
+        return ret;
+    }
+    /**
+    * f0 -> ","
+    * f1 -> FormalParameter()
+    */
+    @Override
+    public String visit(FormalParameterTerm n, String argu) throws Exception {
+        return n.f1.accept(this, argu);
+    }
+    /**
+    * f0 -> ( FormalParameterTerm() )*
+    */
+    @Override
+    public String visit(FormalParameterTail n, String argu) throws Exception {
+        String ret = "";
+        for ( Node node: n.f0.nodes) {
+            if(argu.equals("llvm")){
+                node.accept(this, argu);
+            }else {
+                ret += "," + node.accept(this, argu); // οι υπόλοιποι τύποι μετά τον πρώτο
+            }
+        }
+        return ret;
+    }
+    /**
+    * f0 -> Type()
+    * f1 -> Identifier()
+    */
+   /* Θέλω τη μορφη i32 %a, i1 %b, ... -> για το define της μεθοδου : null/default
+   ή την μορφη int, boolean , ...  -> για την ευρεση της σωστης currMethod : signature
+   ή τον χειρισμό των παραμέτρων alloca + store -> στο "body" της μεθόδου : llvm*/
+   public String visit(FormalParameter n, String argu) throws Exception {
+        String id  = n.f1.accept(this, "name");
+        String type = llvmType(n.f0.accept(this, null));
+        if(argu.equals("llvm")){ // alloca + store
+            String newid = "%" + id + ".addr = alloca " + type;
+            emit(newid);
+            String storeStr = "store " + type + " %" + id + ", " + type + "* " + newid;
+            emit(storeStr);
+            return null;
+        }else if(argu.equals("signature")){ // paremeters signature
+            return n.f0.toString();
+        }
+        id = "%" + id;                      // declerations
+        return type + " " + id;
+   }
+    /**
+    * f0 -> Type()
+    * f1 -> Identifier()
+    * f2 -> ";"
+    */
+    @Override
+    public String visit(VarDeclaration n, String argu) throws Exception{
+        String type = n.f0.accept(this, null);
+        String name = n.f1.accept(this, "name");
+        String llvmtype = llvmType(type);
+        emit("%" + name + " = alloca " + llvmtype);
+        return null;
+    }
+    @Override
+    public String visit(Identifier n, String argu) throws Exception{
+        // πρέπει να πάρω τη μεταβλητή από τη σωστή ιεραρχία
+        if("type".equals(argu))
+            return CheckVariable(n.f0.toString());
+        return n.f0.toString(); // αυτό τις περιπτώσεις που θέλω απλά το όνομα ενός identifier
+        // χωρίς να ψάξω μέσα στην ιεραρχία των μεταβλητών
+    }
+    @Override
+    public String visit(ArrayType n, String argu) {
+        return "int[]";
+    }
+
+    @Override
+    public String visit(BooleanType n, String argu) {
+        return "boolean";
+    }
+
+    @Override
+    public String visit(IntegerType n, String argu) {
+        return "int";
     }
 }

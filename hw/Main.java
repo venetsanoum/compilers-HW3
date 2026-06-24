@@ -23,7 +23,7 @@ public class Main {
 
                 String out = args[i].replace(".java", ".ll");
                 FileWriter fw = new FileWriter(out);
-                IRVisitor irv = new IRVisitor(st.symtbl, writer);
+                IRVisitor irv = new IRVisitor(st.symtbl, fw);
                 root.accept(irv, null);
                 fw.close();
             }
