@@ -109,10 +109,10 @@ class IRVisitor extends GJDepthFirst <String, String>{
         emit("");
         String str = "define i32 @main(i32 %argc, i8** %argv) {";
         for (Node node : n.f14.nodes){
-            str += node.accept(this, null);
+            node.accept(this, null);
         }
         for(Node node : n.f15.nodes){
-            str += node.accept(this, null);
+            node.accept(this, null);
         }
         emit(str);
         emit("ret i32 0");
@@ -190,14 +190,14 @@ class IRVisitor extends GJDepthFirst <String, String>{
             }
         }
         emit("define " + llvmtype + " @" + currMethod + " (" + params + ") {");
-        n.f4.accept(this, "llvm");
+        //n.f4.accept(this, "llvm");
         for(Node node : n.f7.nodes){
-            n.accept(this, null);
+            node.accept(this, null);
         }
         for(Node node : n.f8.nodes){
-            n.accept(this, null);
+            node.accept(this, null);
         }
-        String reg = n.f10.accept(this, "type");
+        String reg = n.f10.accept(this, "load");
 
         emit("ret " + llvmtype + " " + reg);
         emit("}");
@@ -232,11 +232,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
     public String visit(FormalParameterTail n, String argu) throws Exception {
         String ret = "";
         for ( Node node: n.f0.nodes) {
-            if(argu.equals("llvm")){
-                node.accept(this, argu);
-            }else {
-                ret += "," + node.accept(this, argu); // οι υπόλοιποι τύποι μετά τον πρώτο
-            }
+            ret += "," + node.accept(this, argu); // οι υπόλοιποι τύποι μετά τον πρώτο
         }
         return ret;
     }
@@ -245,18 +241,11 @@ class IRVisitor extends GJDepthFirst <String, String>{
     * f1 -> Identifier()
     */
    /* Θέλω τη μορφη i32 %a, i1 %b, ... -> για το define της μεθοδου : null/default
-   ή την μορφη int, boolean , ...  -> για την ευρεση της σωστης currMethod : signature
-   ή τον χειρισμό των παραμέτρων alloca + store -> στο "body" της μεθόδου : llvm*/
-   public String visit(FormalParameter n, String argu) throws Exception {
+   ή την μορφη int, boolean , ...  -> για την ευρεση της σωστης currMethod : signature*/
+    public String visit(FormalParameter n, String argu) throws Exception {
         String id  = n.f1.accept(this, "name");
         String type = llvmType(n.f0.accept(this, null));
-        if(argu.equals("llvm")){ // alloca + store
-            String newid = "%" + id + ".addr = alloca " + type;
-            emit(newid);
-            String storeStr = "store " + type + " %" + id + ", " + type + "* " + newid;
-            emit(storeStr);
-            return null;
-        }else if(argu.equals("signature")){ // paremeters signature
+        if(argu.equals("signature")){ // paremeters signature
             return n.f0.toString();
         }
         id = "%" + id;                      // declerations
@@ -277,9 +266,15 @@ class IRVisitor extends GJDepthFirst <String, String>{
     }
     @Override
     public String visit(Identifier n, String argu) throws Exception{
-        // πρέπει να πάρω τη μεταβλητή από τη σωστή ιεραρχία
+        // πρέπει να πάρω τη μεταβλητή από τη σωστή ιεραρχία, θέλω τον τύπο της
         if("type".equals(argu))
             return CheckVariable(n.f0.toString());
+        else if("load".equals(argu)){ // χρηση μεταβλητής - πρέπει να γινει load. Κάνει emit και επιστρέφει τον προσωρινό καταχωρητή
+            String type = llvmType(CheckVariable(n.f0.toString()));
+            String temp = newTemp();
+            emit(temp + " = load " + type + ", " + type + "* %" + n.f0.toString());
+            return temp;
+        }
         return n.f0.toString(); // αυτό τις περιπτώσεις που θέλω απλά το όνομα ενός identifier
         // χωρίς να ψάξω μέσα στην ιεραρχία των μεταβλητών
     }
@@ -297,4 +292,53 @@ class IRVisitor extends GJDepthFirst <String, String>{
     public String visit(IntegerType n, String argu) {
         return "int";
     }
+    @Override
+    public String visit(IntegerLiteral n, String argu){
+        return n.f0.toString();
+    }
+    @Override
+    public String visit(TrueLiteral n, String argu) throws Exception {
+      return "1";
+   }
+   @Override
+   public String visit(FalseLiteral n, String argu) throws Exception {
+      return "0";
+   }
+    /**
+    * f0 -> Identifier()
+    * f1 -> "="
+    * f2 -> Expression()
+    * f3 -> ";"
+    */
+   @Override
+   public String visit(AssignmentStatement n, String argu) throws Exception {
+    String id = n.f0.accept(this, "name");
+    String llvmtype = llvmType(CheckVariable(id));
+    String reg = n.f2.accept(this, "load");
+    emit("store " + llvmtype + " " + reg + ", " + llvmtype + "* %" + id);
+    // store το αποτέλεσμα του expression στο identifier
+    return null;
+   }
+   /**
+    * f0 -> Identifier()
+    * f1 -> "["
+    * f2 -> Expression()
+    * f3 -> "]"
+    * f4 -> "="
+    * f5 -> Expression()
+    * f6 -> ";"
+    */
+    // @Override
+    // public String visit(ArrayAssignmentStatement n, String argu) throws Exception{
+    //     String type = n.f0.accept(this, "type");
+    //     if(!type.equals("int[]"))
+    //         throw new Exception("In class " + currClass + " ,in method " + currMethod + ". Array required but " + type + " found");
+    //     String exprType = n.f2.accept(this, "type");
+    //     String rightType = n.f5.accept(this, "type");
+    //     if(!exprType.equals("int"))
+    //         throw new Exception("In class " + currClass + " ,in method " + currMethod + ". Bad Array Assignment. Incompatible types: " +exprType + " cannot be converted to int");
+    //     if(!rightType.equals("int"))
+    //         throw new Exception("In class " + currClass + " ,in method " + currMethod + ". Bad Array Assignment. Incompatible types: " + rightType + " cannot be converted to int");
+    //     return "int";
+    // }
 }
