@@ -248,7 +248,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
         if(argu.equals("signature")){ // paremeters signature
             return n.f0.toString();
         }
-        id = "%" + id;                      // declerations
+        id = "%" + id;                // declerations
         return type + " " + id;
    }
     /**
@@ -328,17 +328,76 @@ class IRVisitor extends GJDepthFirst <String, String>{
     * f5 -> Expression()
     * f6 -> ";"
     */
-    // @Override
-    // public String visit(ArrayAssignmentStatement n, String argu) throws Exception{
-    //     String type = n.f0.accept(this, "type");
-    //     if(!type.equals("int[]"))
-    //         throw new Exception("In class " + currClass + " ,in method " + currMethod + ". Array required but " + type + " found");
-    //     String exprType = n.f2.accept(this, "type");
-    //     String rightType = n.f5.accept(this, "type");
-    //     if(!exprType.equals("int"))
-    //         throw new Exception("In class " + currClass + " ,in method " + currMethod + ". Bad Array Assignment. Incompatible types: " +exprType + " cannot be converted to int");
-    //     if(!rightType.equals("int"))
-    //         throw new Exception("In class " + currClass + " ,in method " + currMethod + ". Bad Array Assignment. Incompatible types: " + rightType + " cannot be converted to int");
-    //     return "int";
-    // }
+    @Override
+    public String visit(ArrayAssignmentStatement n, String argu) throws Exception{
+        String expr = n.f2.accept(this, "load");
+        String rightexpr = n.f5.accept(this, "load");
+        //String id = n.f0.accept(this, )
+    }
+
+    /**
+    * f0 -> PrimaryExpression()
+    * f1 -> "<"
+    * f2 -> PrimaryExpression()
+    */
+    @Override
+    public String visit(CompareExpression n, String argu) throws Exception{
+        String left = n.f0.accept(this, "load");
+        String right = n.f2.accept(this, "load");
+        String temp = newTemp();
+        emit(temp + " = icmp slt i32 " + left + ", " + right);
+        return temp;
+    }
+    /**
+    * f0 -> PrimaryExpression()
+    * f1 -> "+"
+    * f2 -> PrimaryExpression()
+    */
+    @Override
+    public String visit(PlusExpression n, String argu) throws Exception{
+        String left = n.f0.accept(this, "load");
+        String right = n.f2.accept(this, "load");
+        String temp = newTemp();
+        emit(temp + " = add i32 " + left + ", " + right);
+        return temp;
+    }
+    /**
+    * f0 -> PrimaryExpression()
+    * f1 -> "-"
+    * f2 -> PrimaryExpression()
+    */
+    @Override
+    public String visit(MinusExpression n, String argu) throws Exception{
+        String left = n.f0.accept(this, "load");
+        String right = n.f2.accept(this, "load");
+        String temp = newTemp();
+        emit(temp + " = sub i32 " + left + ", " + right);
+        return temp;
+    }
+    /**
+    * f0 -> PrimaryExpression()
+    * f1 -> "*"
+    * f2 -> PrimaryExpression()
+    */
+    @Override
+    public String visit(TimesExpression n, String argu) throws Exception{
+        String left = n.f0.accept(this, "load");
+        String right = n.f2.accept(this, "load");
+        String temp = newTemp();
+        emit(temp + " = mul i32 " + left + ", " + right);
+        return temp;
+    }
+    /**
+    * f0 -> PrimaryExpression()
+    * f1 -> "&&"
+    * f2 -> PrimaryExpression()
+    */
+    @Override
+    public String visit(AndExpression n, String argu) throws Exception{
+        String left = n.f0.accept(this, "load");
+        String right = n.f2.accept(this, "load");
+        String temp = newTemp();
+        emit(temp + " = and i8 " + left + ", " + right);
+        return temp;
+    }
 }
