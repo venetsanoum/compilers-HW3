@@ -25,7 +25,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
         return "if" + ifCount++;
     }
     String newWhileLabel(){
-        return "while" + whileCount;
+        return "while" + whileCount++;
     }
     void emit(String s) throws Exception{
         try{
@@ -107,6 +107,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
         emit("declare i8* @calloc(i32, i32)");
         emit("declare void @throw_oob()");
         emit("");
+        // TODO: more declerations
         String str = "define i32 @main(i32 %argc, i8** %argv) {";
         for (Node node : n.f14.nodes){
             node.accept(this, null);
@@ -292,6 +293,18 @@ class IRVisitor extends GJDepthFirst <String, String>{
     public String visit(IntegerType n, String argu) {
         return "int";
     }
+    /* Primary Expressions */
+    /**
+    * f0 -> IntegerLiteral()
+    *       | TrueLiteral()
+    *       | FalseLiteral()
+    *       | Identifier()
+    *       | ThisExpression() TODO
+    *       | ArrayAllocationExpression() TODO
+    *       | AllocationExpression() TODO
+    *       | NotExpression() TODO
+    *       | BracketExpression() TODO
+    */
     @Override
     public String visit(IntegerLiteral n, String argu){
         return n.f0.toString();
@@ -304,7 +317,16 @@ class IRVisitor extends GJDepthFirst <String, String>{
    public String visit(FalseLiteral n, String argu) throws Exception {
       return "0";
    }
-    /**
+   /* Statements */
+       /**
+    * f0 -> Block() TODO
+    *       | AssignmentStatement()
+    *       | ArrayAssignmentStatement()
+    *       | IfStatement() 
+    *       | WhileStatement()
+    *       | PrintStatement()
+    */
+   /**
     * f0 -> Identifier()
     * f1 -> "="
     * f2 -> Expression()
@@ -328,13 +350,91 @@ class IRVisitor extends GJDepthFirst <String, String>{
     * f5 -> Expression()
     * f6 -> ";"
     */
+   /* ptr_idx = &ptr[idx] 
+   %ptr_idx = getelementptr i8, i8* %ptr, i32 %idx */
     @Override
     public String visit(ArrayAssignmentStatement n, String argu) throws Exception{
-        String expr = n.f2.accept(this, "load");
-        String rightexpr = n.f5.accept(this, "load");
-        //String id = n.f0.accept(this, )
+        String arrayindx = n.f0.accept(this, "load");
+        String indx = n.f2.accept(this, "load");
+        String reg = n.f5.accept(this, "load");
+        String tmp = newTemp(); // αποτελεσμα του getelementptr
+        String str = tmp + " = getelementptr i32, i32* " + arrayindx + ", i32 " + indx;
+        emit(str);
+        emit("store i32 " + reg + ", i32* " + tmp);
+        return null;
+    }
+    /**
+    * f0 -> "if"
+    * f1 -> "("
+    * f2 -> Expression()
+    * f3 -> ")"
+    * f4 -> Statement()
+    * f5 -> "else"
+    * f6 -> Statement()
+    */
+   @Override
+   public String visit(IfStatement n, String argu) throws Exception {
+        String ifLabel = newIfLabel();
+        String elseLabel = newIfLabel();
+        String endLabel = newIfLabel();
+        String condition = n.f2.accept(this, "load");
+        emit("br i1 " + condition + ", label %" + ifLabel + ", label %" + elseLabel);
+        emit(ifLabel + ":");
+        n.f4.accept(this, null);
+        emit("br label %" + endLabel); // μετα το if πηγαινε στο τελος
+        emit(elseLabel + ":");
+        n.f6.accept(this, null);
+        emit("br label %" + endLabel); // μετα το else πηγαινε στο τελος
+        emit(endLabel + ":");
+        return null;
     }
 
+   /**
+    * f0 -> "while"
+    * f1 -> "("
+    * f2 -> Expression()
+    * f3 -> ")"
+    * f4 -> Statement()
+    */
+   public String visit(WhileStatement n, String argu) throws Exception {
+        String whileLabel = newWhileLabel();
+        emit("br label %" + whileLabel);
+        emit(whileLabel + ":");
+        String condition = n.f2.accept(this, "load");
+        String trueLabel = newWhileLabel();
+        String falseLabel = newWhileLabel();
+        emit("br i1 " + condition + ", label %" + trueLabel + ", label %" + falseLabel);
+        emit(trueLabel + ":");
+        n.f4.accept(this, null);
+        emit("br label %" + whileLabel);
+        emit(falseLabel + ":");
+        return null;
+    }
+
+   /**
+    * f0 -> "System.out.println"
+    * f1 -> "("
+    * f2 -> Expression()
+    * f3 -> ")"
+    * f4 -> ";"
+    */
+   public String visit(PrintStatement n, String argu) throws Exception {
+        String reg = n.f2.accept(this, "load");
+        emit("call void @printint(i32 " + reg + ")");
+        return null;
+   }
+    /* Expressions */
+    /**
+    * f0 -> AndExpression() 
+    *       | CompareExpression()
+    *       | PlusExpression()
+    *       | MinusExpression()
+    *       | TimesExpression()
+    *       | ArrayLookup() TODO
+    *       | ArrayLength() TODO
+    *       | MessageSend() TODO
+    *       | PrimaryExpression()
+    */
     /**
     * f0 -> PrimaryExpression()
     * f1 -> "<"
@@ -397,7 +497,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
         String left = n.f0.accept(this, "load");
         String right = n.f2.accept(this, "load");
         String temp = newTemp();
-        emit(temp + " = and i8 " + left + ", " + right);
+        emit(temp + " = and i1 " + left + ", " + right);
         return temp;
     }
 }
