@@ -2,7 +2,9 @@ import syntaxtree.*;
 import visitor.*;
 import symtbl.*;
 import java.io.FileWriter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 class IRVisitor extends GJDepthFirst <String, String>{
     String currClass, currMethod;
@@ -76,6 +78,15 @@ class IRVisitor extends GJDepthFirst <String, String>{
         }
         throw new Exception("Curr Class: " + currClass + " Undefined Variable: " + name);
     }
+    public void emitVtables(){
+        for(Map.Entry<String, ClassInfo> entry : symtbl.RetrieveClasses().entrySet()){
+            ClassInfo c = entry.getValue();
+            if(c.isMainClass()) continue;
+            //int numOfMethods = c.getNextMethod()/8;
+           // String vtable = "@." + entry.getKey() + "_vtable = global [" + numOfMethods + "x i8*] [";
+
+        }
+    }
     /**
     * f0 -> "class"
     * f1 -> Identifier()
@@ -103,6 +114,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
         currClassInfo = symtbl.RetrieveClass(classname);
         currMethInfo = currClassInfo.RetrieveMethod("main").get(0);
         currMethod = "main";
+        emitVtables();
         emit("declare i32 @printf(i8*)");
         emit("declare i8* @calloc(i32, i32)");
         emit("declare void @throw_oob()");
@@ -300,7 +312,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
     *       | FalseLiteral()
     *       | Identifier()
     *       | ThisExpression() TODO
-    *       | ArrayAllocationExpression() TODO
+    *       | ArrayAllocationExpression()
     *       | AllocationExpression() TODO
     *       | NotExpression() TODO
     *       | BracketExpression() TODO
@@ -317,9 +329,57 @@ class IRVisitor extends GJDepthFirst <String, String>{
    public String visit(FalseLiteral n, String argu) throws Exception {
       return "0";
    }
+   /**
+    * f0 -> "new"
+    * f1 -> "int"
+    * f2 -> "["
+    * f3 -> Expression()
+    * f4 -> "]"
+    */
+   @Override
+   public String visit(ArrayAllocationExpression n, String argu) throws Exception{
+    String lenReg = n.f3.accept(this, "load"); // ο καταχωρητης που περιέχει το μέγεθος του πινακα
+    String total = newTemp();
+    emit(total + " = add i32 " + lenReg + ", 1"); // +1 για να αποθηκευσω το μέγεθος
+    String arrayprt = newTemp();
+    emit(arrayprt + " = call i8* @calloc i32 " + total + ", i32 4");
+    // cast σε i32
+    String casted = newTemp();
+    emit(casted + " = bitcast i8* " + arrayprt + " to i32*");
+    emit("store i32 " + lenReg + ", i32* " + casted); // αποθηκευω το μεγεθος στη θέση 0
+    String result = newTemp();
+    emit(result + " = getelementptr i32, i32* " + casted + ", i32 1"); // τελικό αποτέλεσμα ειναι δεικτη στη θέση 1 του πινακα casted
+    return result;
+   }
+   /**
+    * f0 -> "new"
+    * f1 -> Identifier()
+    * f2 -> "("
+    * f3 -> ")"
+    */
+   @Override
+   public String visit(AllocationExpression n, String argu) throws Exception{
+    String classname = n.f1.accept(this, "name");
+    ClassInfo classinfo = symtbl.RetrieveClass(classname);
+    // δέσμευση μνήμης για το object
+    int size = classinfo.getNextField() + 8;
+    int numOfMethods = classinfo.getNextMethod() / 8;
+    String newObj = newTemp();
+    emit(newObj + " = call i8* @calloc(i32 1, i32 " + size + ")");
+    // cast σε i8*** γιατι: το πρώτο πεδιου του object ειναι τύπου i8** (δηλαδή pointer στο v-table)
+    // άρα θέλω pointer σε αυτό το πεδίο δηλαδη pointer σε pointer σε pointer (i8***)
+    String vTable = newTemp();
+    emit(vTable + " = bitcast i8* " + newObj + " to i8***");
+    // παίρνω ptr στη αρχη του v-table
+    String startOfVtable = newTemp();
+    emit(startOfVtable + " = getelementptr [" + numOfMethods + " x i8*], [" + numOfMethods + " x i8*]* @." + classname + "_vtable, i32 0, i32 0");
+    // το πρώτο πεδίο του νεου αντικειμενου ειναι δεικτης στο v-table που του αντιστοιχεί
+    emit("store i8** " + startOfVtable + ", i8*** " + vTable);
+    return newObj;
+   }
    /* Statements */
        /**
-    * f0 -> Block() TODO
+    * f0 -> Block()
     *       | AssignmentStatement()
     *       | ArrayAssignmentStatement()
     *       | IfStatement() 
@@ -354,13 +414,13 @@ class IRVisitor extends GJDepthFirst <String, String>{
    %ptr_idx = getelementptr i8, i8* %ptr, i32 %idx */
     @Override
     public String visit(ArrayAssignmentStatement n, String argu) throws Exception{
-        String arrayindx = n.f0.accept(this, "load");
-        String indx = n.f2.accept(this, "load");
-        String reg = n.f5.accept(this, "load");
+        String arrayindx = n.f0.accept(this, "load"); // pointer του array
+        String indx = n.f2.accept(this, "load");    // index
+        String reg = n.f5.accept(this, "load");     // τον καταχωρητη με το αποτέλεσμα του δεξιού μέλους της εκφρασης
         String tmp = newTemp(); // αποτελεσμα του getelementptr
         String str = tmp + " = getelementptr i32, i32* " + arrayindx + ", i32 " + indx;
         emit(str);
-        emit("store i32 " + reg + ", i32* " + tmp);
+        emit("store i32 " + reg + ", i32* " + tmp); // store στο τέλος
         return null;
     }
     /**
@@ -430,8 +490,8 @@ class IRVisitor extends GJDepthFirst <String, String>{
     *       | PlusExpression()
     *       | MinusExpression()
     *       | TimesExpression()
-    *       | ArrayLookup() TODO
-    *       | ArrayLength() TODO
+    *       | ArrayLookup()
+    *       | ArrayLength()
     *       | MessageSend() TODO
     *       | PrimaryExpression()
     */
@@ -500,4 +560,46 @@ class IRVisitor extends GJDepthFirst <String, String>{
         emit(temp + " = and i1 " + left + ", " + right);
         return temp;
     }
+    /**
+    * f0 -> PrimaryExpression()
+    * f1 -> "["
+    * f2 -> PrimaryExpression()
+    * f3 -> "]"
+    */
+   @Override
+   public String visit(ArrayLookup n, String argu) throws Exception{
+    String arrayindx=n.f0.accept(this, "load");
+    String indx=n.f2.accept(this, "load");
+    String tmp = newTemp();
+    emit(tmp + " = getelmntptr i32, i32* " + arrayindx + ", i32 " + indx);
+    String result = newTemp();
+    emit(result + " = load i32, i32* " + tmp);
+    return result;
+   }
+   /**
+    * f0 -> PrimaryExpression()
+    * f1 -> "."
+    * f2 -> "length"
+    */
+   @Override
+   public String visit(ArrayLength n, String argu) throws Exception{
+    String tmp = n.f0.accept(this, "load");
+    String lenptrReg = newTemp();
+    emit(lenptrReg + " = getelementptr i32, i32* " + tmp + ", i32 -1"); // μια θεση πριν απο αυτο που μας επεστρεψε το tmp
+    String lenReg = newTemp();
+    emit(lenReg + " = load i32, i32* " + lenptrReg);
+    return lenReg;
+   }
+   /**
+    * f0 -> PrimaryExpression()
+    * f1 -> "."
+    * f2 -> Identifier()
+    * f3 -> "("
+    * f4 -> ( ExpressionList() )?
+    * f5 -> ")"
+    */
+   @Override
+   public String visit(MessageSend n, String argu) throws Exception{
+    return null;
+   }
 }

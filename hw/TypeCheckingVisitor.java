@@ -569,26 +569,22 @@ class TypeCheckingVisitor extends GJDepthFirst <String, String>{
         // το όνομα method
         // όσο δεν έχω βρει την μέθοδο σε μια κλάση, πηγαίνω στις γονεικές της
         // μέχρι να βρεθεί, αν δεν βρεθεί πουθενά σημαίνει ότι δεν έχει δηλωθεί
-        List<MethodInfo> candidates = new ArrayList<>();
         while(curr != null){
             // αν υπάρχει η μέθοδος στην κλάση curr σταματάω τον έλεγχο
             if(curr.MethodExists(method)){
                 meth = curr.RetrieveMethod(method);
-                for(MethodInfo mi : meth){
-                    candidates.add(mi);
-                }
-                //break;
+                break;
             }
             // αλλιώς πηγαίνω στον γονέα της τρέχουσας κλάσης αν υπάρχει
             String parent = curr.RetrieveParent();
             curr = (parent == null) ? null : symtbl.RetrieveClass(parent);
         }
         // σε αυτό το σημείο δεν έχει βρεθεί πουθενά αυτή η μέθοδος, άρα δεν έχει δηλωθεί
-        if(candidates.isEmpty())
+        if(meth == null)
             throw new Exception("No such method: " + method);
 
         // Κοιτάω για matching
-        for(MethodInfo m : candidates){
+        for(MethodInfo m : meth){
             boolean flag;
             // παράμετροι της τρέχουσας μεθόδου 
             List<LocalVarInfo> params = m.RetrieveParameters();

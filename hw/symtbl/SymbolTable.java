@@ -1,7 +1,5 @@
 package symtbl;
 import java.util.LinkedHashMap;
-import java.util.ArrayList;
-import java.util.List;
 
 public class SymbolTable {
     // το symbol table είναι ένα hashmap με κλειδί το όνομα κάθε κλάσης

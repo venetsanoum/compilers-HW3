@@ -1,9 +1,7 @@
 package symtbl;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.HashSet;
 public class ClassInfo{
     // θέλω λίστα απο methodinfo για την υποστηριξη του overloading
     // θα ειναι κάτι της μορφής foo -> foo(int), foo(int, A) κλπ
