@@ -332,22 +332,35 @@
 
 // }
    
+// class Input {
+//     public static void main(String[] a) {
+//         System.out.println(new Foo().bar());
+//     }
+// }
+
+// class Foo {
+//     public int bar() {
+//         int x;
+//         int y;
+//         x = 5;
+//         if(x < 6){
+//             y=8;
+//         }else{
+//             y=0;
+//         }
+//         return x;
+//     }
+// }
+
 class Input {
-    public static void main(String[] a) {
-        System.out.println(new Foo().bar());
-    }
+    public static void main(String[] a){}
 }
 
-class Foo {
-    public int bar() {
-        int x;
-        int y;
-        x = 5;
-        if(x < 6){
-            y=8;
-        }else{
-            y=0;
-        }
-        return x;
-    }
+class A {
+    public int foo(){ return 1; }
+    public int bar(){ return 2; }
+}
+
+class B extends A {
+    public int baz(){ return 3; }
 }

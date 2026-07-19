@@ -1,5 +1,3 @@
-import java.util.HashMap;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import symtbl.*;
@@ -15,7 +13,59 @@ public class OffsetsCalculator{
             ClassInfo c = entry.getValue();
             if(c.isMainClass()) continue; // η main δεν εχει offset
             classOffsets(c);
+            buildVtable(c);
+            /* --------------------------------------------------------------- */
+            System.out.println("VTABLE " + c.GetName());
+            for(Map.Entry<Integer, MethodInfo> e : c.RetrieveVtableMeth().entrySet()){
+                System.out.println(e.getKey() + " -> " + e.getValue().GetMethodName());
+            }
+            /* --------------------------------------------------------------- */
         }
+    }
+    /* Χτίζω το v-table κάθε κλάσης */
+    public void buildVtable(ClassInfo c){
+        // αντιγράφω το v-table της γονεικής κλάσης στη τρέχουσα κλάση 
+        if(c.RetrieveParent() != null){
+            ClassInfo parent = symtbl.RetrieveClass(c.RetrieveParent());
+            c.copyVtableMeth(parent);
+        }
+        // και προσθέτω τις επιπλέον μεθόδους με τα offsets τους
+        for(List<MethodInfo> l:c.RetrieveMethods().values()){
+            for (MethodInfo m :l){
+                c.addvtableMeth(m.GetOffset(), m);
+            }
+        }
+    }
+    public boolean sameSignature(MethodInfo m1, MethodInfo m2){
+        List<LocalVarInfo> p1 = m1.RetrieveParameters();
+        List<LocalVarInfo> p2 = m2.RetrieveParameters();
+
+        if(p1.size()!=p2.size())
+            return false;
+        for(int i=0;i<p1.size();i++){
+            String type1=p1.get(i).GetType();
+            String type2=p2.get(i).GetType();
+            if(!type1.equals(type2))
+                return false;
+        }
+    return m1.GetRetVal().equals(m2.GetRetVal());
+    }
+    public MethodInfo getOverridenMethod(MethodInfo m, ClassInfo c){
+        String parent;
+        ClassInfo curr = c;
+        while((parent = curr.RetrieveParent()) != null){
+            ClassInfo parClass = symtbl.RetrieveClass(parent);
+            List <MethodInfo> methds = parClass.RetrieveMethod(m.GetMethodName());
+            if(methds != null){
+                for(MethodInfo pm : methds){
+                    if(sameSignature(pm, m)){
+                        return pm;
+                    }
+                }
+            }
+            curr = parClass;
+        }
+        return null;
     }
     public void classOffsets(ClassInfo c){
         int field = 0;
@@ -49,7 +99,13 @@ public class OffsetsCalculator{
             // για κάθε μέθοδο στη λίστα των μεθόδων
             for(MethodInfo m : methods){
                 // αν είναι override η μέθοδος δεν τυπώνεται offset
-                if(isOverride(m, c)) continue;
+                
+                MethodInfo overriden = getOverridenMethod(m, c);
+                if(overriden!= null){
+                    m.SetOffset(overriden.GetOffset());
+                    continue;
+                }
+                
                 m.SetOffset(method);
                 System.out.println(c.GetName() + "." + m.GetMethodName() + " : " + method);
                 method += 8;

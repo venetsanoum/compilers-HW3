@@ -7,7 +7,8 @@ public class ClassInfo{
     // θα ειναι κάτι της μορφής foo -> foo(int), foo(int, A) κλπ
     LinkedHashMap <String, List<MethodInfo>> methods = new LinkedHashMap<String, List<MethodInfo>>();
     // linked hashmap γιατί τα θέλω με την σειρά τα fields για το Offset
-    LinkedHashMap <String, FieldInfo> fields = new LinkedHashMap<>();   
+    LinkedHashMap <String, FieldInfo> fields = new LinkedHashMap<>();  
+    LinkedHashMap<Integer, MethodInfo> vtableMeth = new LinkedHashMap<Integer, MethodInfo>(); 
     String name;
     String parentname;
     int nextField;
@@ -73,5 +74,14 @@ public class ClassInfo{
     }
     public void setIsMain(boolean b){
         this.ismain = b;
+    }
+    public void addvtableMeth(Integer off,  MethodInfo m){
+        this.vtableMeth.put(off, m);
+    }
+    public LinkedHashMap<Integer, MethodInfo>RetrieveVtableMeth(){
+        return this.vtableMeth;
+    }
+    public void copyVtableMeth(ClassInfo p){
+        this.vtableMeth.putAll(p.RetrieveVtableMeth());
     }
 }

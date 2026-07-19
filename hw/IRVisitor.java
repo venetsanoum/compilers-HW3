@@ -2,6 +2,7 @@ import syntaxtree.*;
 import visitor.*;
 import symtbl.*;
 import java.io.FileWriter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +32,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
     }
     void emit(String s) throws Exception{
         try{
-            fw.write(s + "\n");
+            fw.write(s);
         }catch (Exception e){
             System.err.println(e.getMessage());
         }
@@ -78,13 +79,31 @@ class IRVisitor extends GJDepthFirst <String, String>{
         }
         throw new Exception("Curr Class: " + currClass + " Undefined Variable: " + name);
     }
-    public void emitVtables(){
+    public void emitVtables() throws Exception{
         for(Map.Entry<String, ClassInfo> entry : symtbl.RetrieveClasses().entrySet()){
             ClassInfo c = entry.getValue();
             if(c.isMainClass()) continue;
-            //int numOfMethods = c.getNextMethod()/8;
-           // String vtable = "@." + entry.getKey() + "_vtable = global [" + numOfMethods + "x i8*] [";
-
+            int numOfMethods = c.getNextMethod()/8;
+            String vtable = "@." + entry.getKey() + "_vtable = global [" + numOfMethods + " x i8*] [\n";
+            emit(vtable);
+            LinkedHashMap<Integer, MethodInfo> methods = c.RetrieveVtableMeth();
+            boolean first = true;
+            for(Map.Entry<Integer, MethodInfo> meth : methods.entrySet()){
+                if(!first) emit(",\n ");
+                first = false;
+                MethodInfo m = meth.getValue();
+                String owner = m.getOwnerClass();
+                String name = m.GetMethodName();
+                String retType = llvmType(m.GetRetVal());
+                ArrayList<LocalVarInfo> params = m.RetrieveParameters();
+                String parameters = "i8*";
+                for (LocalVarInfo li : params){
+                    parameters+=", " + llvmType(li.GetType());
+                }
+                String sign = retType + " (" + parameters + ")*";
+                emit("i8* bitcast (" + sign + " @" + owner + "." + name + " to i8*)");
+            }
+            emit("]\n");
         }
     }
     /**
@@ -115,12 +134,12 @@ class IRVisitor extends GJDepthFirst <String, String>{
         currMethInfo = currClassInfo.RetrieveMethod("main").get(0);
         currMethod = "main";
         emitVtables();
-        emit("declare i32 @printf(i8*)");
-        emit("declare i8* @calloc(i32, i32)");
-        emit("declare void @throw_oob()");
+        emit("declare i32 @printf(i8*)\n");
+        emit("declare i8* @calloc(i32, i32)\n");
+        emit("declare void @throw_oob()\n");
         emit("");
         // TODO: more declerations
-        String str = "define i32 @main(i32 %argc, i8** %argv) {";
+        String str = "define i32 @main(i32 %argc, i8** %argv) {\n";
         for (Node node : n.f14.nodes){
             node.accept(this, null);
         }
@@ -128,8 +147,8 @@ class IRVisitor extends GJDepthFirst <String, String>{
             node.accept(this, null);
         }
         emit(str);
-        emit("ret i32 0");
-        emit("}");
+        emit("\nret i32 0\n");
+        emit("}\n");
 
         currMethInfo = null;
         currMethod = null;
@@ -202,7 +221,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
                 break;
             }
         }
-        emit("define " + llvmtype + " @" + currMethod + " (" + params + ") {");
+        emit("define " + llvmtype + " @" + currMethod + " (" + params + ") {\n");
         //n.f4.accept(this, "llvm");
         for(Node node : n.f7.nodes){
             node.accept(this, null);
@@ -212,8 +231,8 @@ class IRVisitor extends GJDepthFirst <String, String>{
         }
         String reg = n.f10.accept(this, "load");
 
-        emit("ret " + llvmtype + " " + reg);
-        emit("}");
+        emit("\nret " + llvmtype + " " + reg + "\n");
+        emit("}\n");
         currMethod = null;
         currMethInfo = null;
         return null;
@@ -274,7 +293,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
         String type = n.f0.accept(this, null);
         String name = n.f1.accept(this, "name");
         String llvmtype = llvmType(type);
-        emit("%" + name + " = alloca " + llvmtype);
+        emit("%" + name + " = alloca " + llvmtype + "\n");
         return null;
     }
     @Override
@@ -285,7 +304,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
         else if("load".equals(argu)){ // χρηση μεταβλητής - πρέπει να γινει load. Κάνει emit και επιστρέφει τον προσωρινό καταχωρητή
             String type = llvmType(CheckVariable(n.f0.toString()));
             String temp = newTemp();
-            emit(temp + " = load " + type + ", " + type + "* %" + n.f0.toString());
+            emit(temp + " = load " + type + ", " + type + "* %" + n.f0.toString() + "\n");
             return temp;
         }
         return n.f0.toString(); // αυτό τις περιπτώσεις που θέλω απλά το όνομα ενός identifier
@@ -311,11 +330,11 @@ class IRVisitor extends GJDepthFirst <String, String>{
     *       | TrueLiteral()
     *       | FalseLiteral()
     *       | Identifier()
-    *       | ThisExpression() TODO
+    *       | ThisExpression() 
     *       | ArrayAllocationExpression()
-    *       | AllocationExpression() TODO
-    *       | NotExpression() TODO
-    *       | BracketExpression() TODO
+    *       | AllocationExpression() 
+    *       | NotExpression() 
+    *       | BracketExpression()
     */
     @Override
     public String visit(IntegerLiteral n, String argu){
@@ -340,15 +359,15 @@ class IRVisitor extends GJDepthFirst <String, String>{
    public String visit(ArrayAllocationExpression n, String argu) throws Exception{
     String lenReg = n.f3.accept(this, "load"); // ο καταχωρητης που περιέχει το μέγεθος του πινακα
     String total = newTemp();
-    emit(total + " = add i32 " + lenReg + ", 1"); // +1 για να αποθηκευσω το μέγεθος
+    emit(total + " = add i32 " + lenReg + ", 1\n"); // +1 για να αποθηκευσω το μέγεθος
     String arrayprt = newTemp();
-    emit(arrayprt + " = call i8* @calloc i32 " + total + ", i32 4");
+    emit(arrayprt + " = call i8* @calloc i32 " + total + ", i32 4\n");
     // cast σε i32
     String casted = newTemp();
-    emit(casted + " = bitcast i8* " + arrayprt + " to i32*");
-    emit("store i32 " + lenReg + ", i32* " + casted); // αποθηκευω το μεγεθος στη θέση 0
+    emit(casted + " = bitcast i8* " + arrayprt + " to i32*\n");
+    emit("store i32 " + lenReg + ", i32* " + casted + "\n"); // αποθηκευω το μεγεθος στη θέση 0
     String result = newTemp();
-    emit(result + " = getelementptr i32, i32* " + casted + ", i32 1"); // τελικό αποτέλεσμα ειναι δεικτη στη θέση 1 του πινακα casted
+    emit(result + " = getelementptr i32, i32* " + casted + ", i32 1\n"); // τελικό αποτέλεσμα ειναι δεικτη στη θέση 1 του πινακα casted
     return result;
    }
    /**
@@ -365,17 +384,32 @@ class IRVisitor extends GJDepthFirst <String, String>{
     int size = classinfo.getNextField() + 8;
     int numOfMethods = classinfo.getNextMethod() / 8;
     String newObj = newTemp();
-    emit(newObj + " = call i8* @calloc(i32 1, i32 " + size + ")");
+    emit(newObj + " = call i8* @calloc(i32 1, i32 " + size + ")\n");
     // cast σε i8*** γιατι: το πρώτο πεδιου του object ειναι τύπου i8** (δηλαδή pointer στο v-table)
     // άρα θέλω pointer σε αυτό το πεδίο δηλαδη pointer σε pointer σε pointer (i8***)
     String vTable = newTemp();
-    emit(vTable + " = bitcast i8* " + newObj + " to i8***");
+    emit(vTable + " = bitcast i8* " + newObj + " to i8***\n");
     // παίρνω ptr στη αρχη του v-table
     String startOfVtable = newTemp();
-    emit(startOfVtable + " = getelementptr [" + numOfMethods + " x i8*], [" + numOfMethods + " x i8*]* @." + classname + "_vtable, i32 0, i32 0");
+    emit(startOfVtable + " = getelementptr [" + numOfMethods + " x i8*], [" + numOfMethods + " x i8*]* @." + classname + "_vtable, i32 0, i32 0\n");
     // το πρώτο πεδίο του νεου αντικειμενου ειναι δεικτης στο v-table που του αντιστοιχεί
-    emit("store i8** " + startOfVtable + ", i8*** " + vTable);
+    emit("store i8** " + startOfVtable + ", i8*** " + vTable + "\n");
     return newObj;
+   }
+   @Override
+   public String visit(ThisExpression n, String argu){
+    return "%this";
+   }
+   /**
+    * f0 -> "!"
+    * f1 -> PrimaryExpression()
+    */
+   @Override
+   public String visit(NotExpression n, String argu)throws Exception{
+    String expr = n.f1.accept(this, argu);
+    String tmp = newTemp();
+    emit(tmp + " = xor i1 " + expr + ", 1\n"); // (1 xor 1)=0=!1, (0 xor 1)=1=!0
+    return tmp;
    }
    /* Statements */
        /**
@@ -397,7 +431,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
     String id = n.f0.accept(this, "name");
     String llvmtype = llvmType(CheckVariable(id));
     String reg = n.f2.accept(this, "load");
-    emit("store " + llvmtype + " " + reg + ", " + llvmtype + "* %" + id);
+    emit("store " + llvmtype + " " + reg + ", " + llvmtype + "* %" + id + "\n");
     // store το αποτέλεσμα του expression στο identifier
     return null;
    }
@@ -418,9 +452,9 @@ class IRVisitor extends GJDepthFirst <String, String>{
         String indx = n.f2.accept(this, "load");    // index
         String reg = n.f5.accept(this, "load");     // τον καταχωρητη με το αποτέλεσμα του δεξιού μέλους της εκφρασης
         String tmp = newTemp(); // αποτελεσμα του getelementptr
-        String str = tmp + " = getelementptr i32, i32* " + arrayindx + ", i32 " + indx;
+        String str = tmp + " = getelementptr i32, i32* " + arrayindx + ", i32 " + indx + "\n";
         emit(str);
-        emit("store i32 " + reg + ", i32* " + tmp); // store στο τέλος
+        emit("store i32 " + reg + ", i32* " + tmp + "\n"); // store στο τέλος
         return null;
     }
     /**
@@ -438,14 +472,14 @@ class IRVisitor extends GJDepthFirst <String, String>{
         String elseLabel = newIfLabel();
         String endLabel = newIfLabel();
         String condition = n.f2.accept(this, "load");
-        emit("br i1 " + condition + ", label %" + ifLabel + ", label %" + elseLabel);
-        emit(ifLabel + ":");
+        emit("br i1 " + condition + ", label %" + ifLabel + ", label %" + elseLabel + "\n");
+        emit(ifLabel + ":\n");
         n.f4.accept(this, null);
-        emit("br label %" + endLabel); // μετα το if πηγαινε στο τελος
-        emit(elseLabel + ":");
+        emit("br label %" + endLabel + "\n"); // μετα το if πηγαινε στο τελος
+        emit(elseLabel + ":\n");
         n.f6.accept(this, null);
-        emit("br label %" + endLabel); // μετα το else πηγαινε στο τελος
-        emit(endLabel + ":");
+        emit("br label %" + endLabel + "\n"); // μετα το else πηγαινε στο τελος
+        emit(endLabel + ":\n");
         return null;
     }
 
@@ -458,16 +492,16 @@ class IRVisitor extends GJDepthFirst <String, String>{
     */
    public String visit(WhileStatement n, String argu) throws Exception {
         String whileLabel = newWhileLabel();
-        emit("br label %" + whileLabel);
-        emit(whileLabel + ":");
+        emit("br label %" + whileLabel + "\n");
+        emit(whileLabel + ":\n");
         String condition = n.f2.accept(this, "load");
         String trueLabel = newWhileLabel();
         String falseLabel = newWhileLabel();
-        emit("br i1 " + condition + ", label %" + trueLabel + ", label %" + falseLabel);
-        emit(trueLabel + ":");
+        emit("br i1 " + condition + ", label %" + trueLabel + ", label %" + falseLabel + "\n");
+        emit(trueLabel + ":\n");
         n.f4.accept(this, null);
-        emit("br label %" + whileLabel);
-        emit(falseLabel + ":");
+        emit("br label %" + whileLabel + "\n");
+        emit(falseLabel + ":\n");
         return null;
     }
 
@@ -480,7 +514,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
     */
    public String visit(PrintStatement n, String argu) throws Exception {
         String reg = n.f2.accept(this, "load");
-        emit("call void @printint(i32 " + reg + ")");
+        emit("call void @printint(i32 " + reg + ")\n");
         return null;
    }
     /* Expressions */
@@ -505,7 +539,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
         String left = n.f0.accept(this, "load");
         String right = n.f2.accept(this, "load");
         String temp = newTemp();
-        emit(temp + " = icmp slt i32 " + left + ", " + right);
+        emit(temp + " = icmp slt i32 " + left + ", " + right + "\n");
         return temp;
     }
     /**
@@ -518,7 +552,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
         String left = n.f0.accept(this, "load");
         String right = n.f2.accept(this, "load");
         String temp = newTemp();
-        emit(temp + " = add i32 " + left + ", " + right);
+        emit(temp + " = add i32 " + left + ", " + right + "\n");
         return temp;
     }
     /**
@@ -531,7 +565,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
         String left = n.f0.accept(this, "load");
         String right = n.f2.accept(this, "load");
         String temp = newTemp();
-        emit(temp + " = sub i32 " + left + ", " + right);
+        emit(temp + " = sub i32 " + left + ", " + right + "\n");
         return temp;
     }
     /**
@@ -544,7 +578,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
         String left = n.f0.accept(this, "load");
         String right = n.f2.accept(this, "load");
         String temp = newTemp();
-        emit(temp + " = mul i32 " + left + ", " + right);
+        emit(temp + " = mul i32 " + left + ", " + right + "\n");
         return temp;
     }
     /**
@@ -557,7 +591,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
         String left = n.f0.accept(this, "load");
         String right = n.f2.accept(this, "load");
         String temp = newTemp();
-        emit(temp + " = and i1 " + left + ", " + right);
+        emit(temp + " = and i1 " + left + ", " + right + "\n");
         return temp;
     }
     /**
@@ -571,9 +605,9 @@ class IRVisitor extends GJDepthFirst <String, String>{
     String arrayindx=n.f0.accept(this, "load");
     String indx=n.f2.accept(this, "load");
     String tmp = newTemp();
-    emit(tmp + " = getelmntptr i32, i32* " + arrayindx + ", i32 " + indx);
+    emit(tmp + " = getelmntptr i32, i32* " + arrayindx + ", i32 " + indx + "\n");
     String result = newTemp();
-    emit(result + " = load i32, i32* " + tmp);
+    emit(result + " = load i32, i32* " + tmp + "\n");
     return result;
    }
    /**
@@ -585,9 +619,9 @@ class IRVisitor extends GJDepthFirst <String, String>{
    public String visit(ArrayLength n, String argu) throws Exception{
     String tmp = n.f0.accept(this, "load");
     String lenptrReg = newTemp();
-    emit(lenptrReg + " = getelementptr i32, i32* " + tmp + ", i32 -1"); // μια θεση πριν απο αυτο που μας επεστρεψε το tmp
+    emit(lenptrReg + " = getelementptr i32, i32* " + tmp + ", i32 -1\n"); // μια θεση πριν απο αυτο που μας επεστρεψε το tmp
     String lenReg = newTemp();
-    emit(lenReg + " = load i32, i32* " + lenptrReg);
+    emit(lenReg + " = load i32, i32* " + lenptrReg + "\n");
     return lenReg;
    }
    /**

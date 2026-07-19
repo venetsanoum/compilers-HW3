@@ -9,6 +9,7 @@ public class MethodInfo{
     String name;
     String retval;
     int offset; 
+    String ownerClass;
     public MethodInfo(String name, String retval){
         this.name = name;
         this.retval = retval;
@@ -57,5 +58,11 @@ public class MethodInfo{
     }
     public String GetRetVal(){
         return this.retval;
+    }
+    public void setOwnerClass(String owner){
+        this.ownerClass = owner;
+    }
+    public String getOwnerClass(){
+        return this.ownerClass;
     }
 }

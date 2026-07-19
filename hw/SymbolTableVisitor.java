@@ -123,6 +123,7 @@ class SymbolTableVisitor extends GJDepthFirst <String, Void>{
         MethodInfo method = new MethodInfo(name, type);
         currMethInfo = method;
         curr.AddMethod(name, method);
+        method.setOwnerClass(currClass);
         super.visit(n, argu);
         // αφου ολοκληρωθεί η δήλωση της μεθόδου, δηλαδή μετά το supervisit ελέγχω αν
         // η μέθοδος είναι duplicate
