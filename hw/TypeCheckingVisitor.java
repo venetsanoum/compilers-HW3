@@ -2,7 +2,6 @@ import syntaxtree.*;
 import visitor.*;
 import symtbl.*;
 import java.util.List;
-import java.util.Arrays;
 import java.util.ArrayList;
 // Ο visitor δέχεται String και επιστρέφει String. Το ότι δέχεται string
 // είναι για να ξέρει τι θέλω να μου επιστρέψει ανάλογα το argu στον identifier node

@@ -106,6 +106,25 @@ class IRVisitor extends GJDepthFirst <String, String>{
             emit("]\n");
         }
     }
+    public void emitHelperMethods() throws Exception{
+        emit("declare i8* @calloc(i32, i32)\n");
+        emit("declare i32 @printf(i8*, ...)\n");
+        emit("declare void @exit(i32)\n");
+        emit("@_cint = constant [4 x i8] c\"%d\\0a\\00\"\n");
+        emit("@_cOOB = constant [15 x i8] c\"Out of bounds\\0a\\00\"\n");
+        emit("define void @print_int(i32 %i) {\n");
+        emit("\t%_str = bitcast [4 x i8]* @_cint to i8*\n");
+        emit("\tcall i32 (i8*, ...) @printf(i8* %_str, i32 %i)\n");
+        emit("\ttret void\n");
+        emit("}\n");
+        emit("define void @throw_oob() {\n");
+        emit("\t%_str = bitcast [15 x i8]* @_cOOB to i8*\n");
+        emit("\tcall i32 (i8*, ...) @printf(i8* %_str)\n");
+        emit("\tcall void @exit(i32 1)\n");
+        emit("\tret void\n");
+        emit("}\n");
+
+    }
     /**
     * f0 -> "class"
     * f1 -> Identifier()
@@ -134,19 +153,16 @@ class IRVisitor extends GJDepthFirst <String, String>{
         currMethInfo = currClassInfo.RetrieveMethod("main").get(0);
         currMethod = "main";
         emitVtables();
-        emit("declare i32 @printf(i8*)\n");
-        emit("declare i8* @calloc(i32, i32)\n");
-        emit("declare void @throw_oob()\n");
-        emit("");
-        // TODO: more declerations
-        String str = "define i32 @main(i32 %argc, i8** %argv) {\n";
+        emitHelperMethods();
+        
+        emit("define i32 @main(i32 %argc, i8** %argv) {\n");
         for (Node node : n.f14.nodes){
             node.accept(this, null);
         }
         for(Node node : n.f15.nodes){
             node.accept(this, null);
         }
-        emit(str);
+        
         emit("\nret i32 0\n");
         emit("}\n");
 
@@ -361,7 +377,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
     String total = newTemp();
     emit(total + " = add i32 " + lenReg + ", 1\n"); // +1 για να αποθηκευσω το μέγεθος
     String arrayprt = newTemp();
-    emit(arrayprt + " = call i8* @calloc i32 " + total + ", i32 4\n");
+    emit(arrayprt + " = call i8* @calloc(i32 " + total + ", i32 4)\n");
     // cast σε i32
     String casted = newTemp();
     emit(casted + " = bitcast i8* " + arrayprt + " to i32*\n");
@@ -514,7 +530,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
     */
    public String visit(PrintStatement n, String argu) throws Exception {
         String reg = n.f2.accept(this, "load");
-        emit("call void @printint(i32 " + reg + ")\n");
+        emit("call void @print_int(i32 " + reg + ")\n");
         return null;
    }
     /* Expressions */
@@ -605,7 +621,7 @@ class IRVisitor extends GJDepthFirst <String, String>{
     String arrayindx=n.f0.accept(this, "load");
     String indx=n.f2.accept(this, "load");
     String tmp = newTemp();
-    emit(tmp + " = getelmntptr i32, i32* " + arrayindx + ", i32 " + indx + "\n");
+    emit(tmp + " = getelementptr i32, i32* " + arrayindx + ", i32 " + indx + "\n");
     String result = newTemp();
     emit(result + " = load i32, i32* " + tmp + "\n");
     return result;

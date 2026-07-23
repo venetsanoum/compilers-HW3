@@ -15,10 +15,10 @@ public class OffsetsCalculator{
             classOffsets(c);
             buildVtable(c);
             /* --------------------------------------------------------------- */
-            System.out.println("VTABLE " + c.GetName());
-            for(Map.Entry<Integer, MethodInfo> e : c.RetrieveVtableMeth().entrySet()){
-                System.out.println(e.getKey() + " -> " + e.getValue().GetMethodName());
-            }
+            // System.out.println("VTABLE " + c.GetName());
+            // for(Map.Entry<Integer, MethodInfo> e : c.RetrieveVtableMeth().entrySet()){
+            //     System.out.println(e.getKey() + " -> " + e.getValue().GetMethodName());
+            // }
             /* --------------------------------------------------------------- */
         }
     }
